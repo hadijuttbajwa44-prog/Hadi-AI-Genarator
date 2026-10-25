@@ -4,30 +4,50 @@
 :root{font-family:Inter,system-ui,Arial,sans-serif;color:#edf1ff;background:#0b1020}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top right,#243566 0%,#0b1020 45%);min-height:100vh}.wrap{max-width:1050px;margin:auto;padding:30px 18px}header{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:40px}.logo{font-size:23px;font-weight:800}.logo span{color:#a78bfa}.tag{font-size:12px;color:#c4b5fd;background:#292047;border:1px solid #58478e;padding:7px 12px;border-radius:30px}h1{font-size:clamp(30px,5vw,52px);margin:0 0 12px;line-height:1.1}h1 em{font-style:normal;color:#a78bfa}.sub{color:#aeb8d0;line-height:1.7;margin:0 0 26px}.panel{background:#161d34;border:1px solid #303c5a;border-radius:20px;padding:25px;box-shadow:0 20px 60px #0003}label{display:block;font-weight:650;margin-bottom:10px}textarea,select{background:#0c1428;color:#f2f5ff;border:1px solid #394766;border-radius:12px;padding:14px;width:100%;font:inherit}textarea{min-height:180px;resize:vertical;line-height:1.7}textarea:focus,select:focus{outline:2px solid #8b5cf6}.hint{font-size:13px;color:#aeb8d0;margin:9px 0 20px}.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:18px 0 24px}button,.download{border:0;background:linear-gradient(100deg,#7c3aed,#4f83ff);color:white;font-size:16px;font-weight:750;padding:15px 24px;border-radius:12px;cursor:pointer;width:100%;display:block;text-align:center;text-decoration:none}button:hover,.download:hover{filter:brightness(1.12)}button:disabled{opacity:.55;cursor:wait}.notice{margin-top:15px;padding:14px;background:#29223d;border:1px solid #675192;color:#e6dcff;border-radius:12px;line-height:1.5}.preview{margin-top:26px}.preview h2{font-size:20px}.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.card{border:1px solid #33415e;background:#151d32;border-radius:14px;padding:15px;min-height:110px;overflow-wrap:anywhere}.card strong{color:#c4b5fd}.card p{font-size:14px;color:#cbd5e1}.card img{width:100%;border-radius:10px;margin:10px 0;display:block}.download{padding:10px;font-size:14px}.card small{display:block;margin-bottom:8px;color:#cbd5e1}footer{text-align:center;color:#8694b0;font-size:13px;margin-top:35px}@media(max-width:650px){.grid,.cards{grid-template-columns:1fr}.panel{padding:17px}header{margin-bottom:30px}}
 </style></head><body><div class="wrap"><header><div class="logo">✦ Hadi <span>AI</span></div><div class="tag">Free Image Generator · Experimental</div></header><h1>Create Images <em>In Bulk</em></h1><p class="sub">Enter one prompt per line, choose a style and size, and try generating images using a public AI service. Free service may be unavailable or rate-limited.</p><main class="panel"><label for="prompts">Your Image Prompts</label><textarea id="prompts">A cute 3D cartoon boy in a village
 A beautiful animated forest
-A happy cartoon family in a garden</textarea><p class="hint">One prompt per line · Maximum 10 prompts per batch · Generation may take time</p><div class="grid"><div><label for="style">Image Style</label><select id="style"><option>3D Cartoon</option><option>Realistic</option><option>Anime</option><option>Cinematic</option></select></div><div><label for="ratio">Aspect Ratio</label><select id="ratio"><option>16:9</option><option>9:16</option><option>1:1</option></select></div><div><label for="quality">Quality</label><select id="quality"><option>Standard</option><option>High</option></select></div></div><button id="generate">✨ Generate Images</button><div class="notice" id="status" role="status">Ready. Uses an external public image API; no API key is stored in this website.</div></main><section class="preview"><h2>Generated Images <span id="total">(0)</span></h2><div class="cards" id="cards"></div></section><footer>Made with ♥ · Hadi AI Generator</footer></div><script>
-const btn=document.getElementById('generate'),statusBox=document.getElementById('status'),cards=document.getElementById('cards'),total=document.getElementById('total');
+A happy cartoon family in a garden</textarea><p class="hint">One prompt per line · Maximum 50 prompts per batch · Generation may take time</p><div class="grid"><div><label for="style">Image Style</label><select id="style"><option>3D Cartoon</option><option>Realistic</option><option>Anime</option><option>Cinematic</option></select></div><div><label for="ratio">Aspect Ratio</label><select id="ratio"><option>16:9</option><option>9:16</option><option>1:1</option></select></div><div><label for="quality">Quality</label><select id="quality"><option>Standard</option><option>High</option></select></div></div><button id="generate">✨ Generate Up To 50 Images</button><button id="stop" type="button" style="margin-top:10px;background:#33415e" disabled>■ Stop After Current Image</button><p class="hint">Images are requested one at a time. Free API may fail or limit large batches. Keep this tab open.</p><progress id="progress" max="100" value="0" style="width:100%;height:16px;margin-top:10px"></progress><div class="notice" id="status" role="status">Ready. Uses an external public image API; no API key is stored in this website.</div></main><section class="preview"><h2>Generated Images <span id="total">(0)</span></h2><div class="cards" id="cards"></div></section><footer>Made with ♥ · Hadi AI Generator</footer></div><script>
+const btn=document.getElementById('generate'),stopBtn=document.getElementById('stop'),statusBox=document.getElementById('status'),cards=document.getElementById('cards'),total=document.getElementById('total'),progress=document.getElementById('progress');
 const sizes={'16:9':[1024,576],'9:16':[576,1024],'1:1':[768,768]};
+let stopping=false;
+stopBtn.addEventListener('click',()=>{stopping=true;stopBtn.disabled=true;statusBox.textContent='Stopping after the current request…';});
+const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function createImage(prompt,i,style,ratio,quality,card){
+ const message=document.createElement('small');message.textContent='Generating…';card.append(message);
+ const enhanced=`${prompt}, ${style} style, ${quality==='High'?'high detail, ':''}beautiful composition`;
+ const [width,height]=sizes[ratio];
+ const url=`https://image.pollinations.ai/prompt/${encodeURIComponent(enhanced)}?width=${width}&height=${height}&seed=${Math.floor(Math.random()*10000000)}&nologo=true`;
+ try{
+  const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),90000);
+  let response;try{response=await fetch(url,{signal:controller.signal});}finally{clearTimeout(timer)}
+  if(!response.ok)throw new Error(`Service returned ${response.status}`);
+  const type=response.headers.get('content-type')||'';if(!type.startsWith('image/'))throw new Error('No image returned');
+  const blob=await response.blob(),objectURL=URL.createObjectURL(blob);
+  const img=document.createElement('img');img.src=objectURL;img.alt=prompt;img.loading='lazy';
+  const link=document.createElement('a');link.href=objectURL;link.download=`hadi-ai-${i+1}.${type.includes('png')?'png':'jpg'}`;link.className='download';link.textContent='⬇ Download Image';
+  message.remove();card.append(img,link);return true;
+ }catch(e){message.textContent=`Failed: ${e.message}. Free service may be unavailable.`;
+  const retry=document.createElement('button');retry.textContent='↻ Retry Image';retry.style.marginTop='10px';
+  retry.onclick=async()=>{retry.disabled=true;message.remove();retry.remove();await createImage(prompt,i,style,ratio,quality,card);};
+  card.append(retry);return false;}
+}
 btn.addEventListener('click',async()=>{
  const prompts=document.getElementById('prompts').value.split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
  if(!prompts.length){statusBox.textContent='Please enter at least one prompt.';return;}
- if(prompts.length>10){statusBox.textContent='Please enter at most 10 prompts per batch.';return;}
- btn.disabled=true;cards.replaceChildren();total.textContent=`(${prompts.length})`;
+ if(prompts.length>50){statusBox.textContent='Please enter at most 50 prompts per batch.';return;}
  const style=document.getElementById('style').value,ratio=document.getElementById('ratio').value,quality=document.getElementById('quality').value;
- const [width,height]=sizes[ratio];let done=0;
- for(let i=0;i<prompts.length;i++){
-  statusBox.textContent=`Generating image ${i+1} of ${prompts.length}…`;
-  const card=document.createElement('article');card.className='card';const heading=document.createElement('strong');heading.textContent=`Image ${i+1}`;const desc=document.createElement('p');desc.textContent=prompts[i];const message=document.createElement('small');message.textContent='Loading…';card.append(heading,desc,message);cards.appendChild(card);
-  const enhanced=`${prompts[i]}, ${style} style, ${quality==='High'?'high detail, ':''}beautiful composition`;
-  const url=`https://image.pollinations.ai/prompt/${encodeURIComponent(enhanced)}?width=${width}&height=${height}&seed=${Math.floor(Math.random()*10000000)}&nologo=true`;
-  try{
-   const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),90000);
-   let response;try{response=await fetch(url,{signal:controller.signal});}finally{clearTimeout(timeout)}
-   if(!response.ok)throw new Error(`Service returned ${response.status}`);
-   const type=response.headers.get('content-type')||'';if(!type.startsWith('image/'))throw new Error('Service did not return an image');
-   const blob=await response.blob(),objectURL=URL.createObjectURL(blob);const img=document.createElement('img');img.src=objectURL;img.alt=prompts[i];img.loading='lazy';
-   const link=document.createElement('a');link.href=objectURL;link.download=`hadi-ai-${i+1}.${type.includes('png')?'png':'jpg'}`;link.className='download';link.textContent='⬇ Download Image';message.remove();card.append(img,link);done++;
-  }catch(err){message.textContent=`Could not generate: ${err.message}. The free service may be unavailable or block browser requests.`;}
- }
- statusBox.textContent=`Finished: ${done} of ${prompts.length} images generated. If none worked, the public API may require authentication or a backend.`;btn.disabled=false;
+ stopping=false;btn.disabled=true;stopBtn.disabled=false;cards.replaceChildren();total.textContent=`(0/${prompts.length})`;progress.value=0;
+ let done=0,processed=0;
+ try{
+  for(let i=0;i<prompts.length;i++){
+   if(stopping)break;
+   statusBox.textContent=`Processing ${i+1} of ${prompts.length} · ${done} successful`;
+   const card=document.createElement('article');card.className='card';
+   const heading=document.createElement('strong');heading.textContent=`Image ${i+1}`;
+   const desc=document.createElement('p');desc.textContent=prompts[i];card.append(heading,desc);cards.append(card);
+   if(await createImage(prompts[i],i,style,ratio,quality,card))done++;
+   processed++;total.textContent=`(${done}/${prompts.length})`;progress.value=Math.round(processed/prompts.length*100);
+   if(i<prompts.length-1&&!stopping)await sleep(1500);
+  }
+  statusBox.textContent=`${stopping?'Stopped':'Finished'}: ${done} successful out of ${processed} attempted (${prompts.length} requested). Failed images can be retried.`;
+ }finally{btn.disabled=false;stopBtn.disabled=true;}
 });
 </script></body></html>
